@@ -1,15 +1,10 @@
 # datastore
 
-To install dependencies:
+This is a simple datastore using sqlite to store sensor data
 
-```bash
-bun install
-```
-
-To run:
-
-```bash
-bun run index.ts
-```
-
-This project was created using `bun init` in bun v1.2.21. [Bun](https://bun.com) is a fast all-in-one JavaScript runtime.
+Features include
+- No timeseries data
+- Not expandable
+- Easy to read
+- Easy to setup
+- Requires no additional programs or services (apart from the obligatory mqtt broker)
