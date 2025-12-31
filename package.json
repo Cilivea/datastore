@@ -1,0 +1,17 @@
+{
+  "name": "datastore",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "cil-db": "https://github.com/Cilivea/cil-db",
+    "cilivea-value": "https://github.com/Cilivea/cilivea-value",
+    "mongoose": "^8.19.2"
+  }
+}
