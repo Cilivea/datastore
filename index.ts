@@ -85,39 +85,6 @@ s.on_block_data((gateway_uuid, block_uuid, value_name, val) => {
             q2.run(JSON.stringify(prev_meta), block_uuid)
         }
     }
-    // let blocks = gw.get("blocks")
-    // let in_arr = false
-    // for (let el of blocks) {
-    //     if (el.toString() === block_uuid) {
-    //         in_arr = true
-    //         break
-    //     }
-    // }
-
-    // if (!in_arr) {
-    //     gw.set("blocks", [...blocks, block_uuid])
-    //     await gw.save()
-    // }
-
-    // let block = await Block.findOne({ uuid: block_uuid }).exec()
-    // if (block === null) {
-    //     block = new Block({
-    //         latest_value: 0,
-    //         metadata: {},
-    //         parent_gateway: gateway_uuid,
-    //         uuid: block_uuid
-    //     })
-    // }
-
-    // if (value_name === "value") {
-    //     block["latest_value"] = val
-    // } else {
-    //     if (block["metadata"] === undefined) { block["metadata"] = {} }
-    //     block["metadata"][value_name] = val
-    // }
-
-    // await block.save()
-
 })
 
 // s.on_gateway_data((gateway_uuid, name, val) => {
