@@ -1,15 +1,21 @@
-import { Server } from "cil-db"
+import { Server } from "cil-db";
+import { Database } from "bun:sqlite";
+import type { UUID } from "cilivea-value";
 
-import { Database } from "bun:sqlite"
+const enable_aedes = false;
 
-const db = new Database("data.sql")
+import { WebSocketServer, createWebSocketStream } from "ws";
+
+import { Aedes } from "aedes";
+import net from "net";
+import http from "http";
+const db = new Database("data.sql");
 
 db.run(`CREATE TABLE IF NOT EXISTS gateways (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     uuid TEXT NOT NULL UNIQUE,
-    name TEXT,
     meta JSON
-)`)
+)`);
 
 db.run(`CREATE TABLE IF NOT EXISTS blocks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -17,85 +23,110 @@ db.run(`CREATE TABLE IF NOT EXISTS blocks (
     parent TEXT NOT NULL,
     value ANY,
     meta JSON
-    )`)
+    )`);
 
-let s = new Server("mqtt://localhost", 1886, {})
+let s = new Server("mqtt://localhost", 1886, {});
+
+function insert_gateway(gateway_uuid: UUID) {
+    let q = db.query(
+        `INSERT OR IGNORE INTO gateways(uuid, meta) VALUES (?, ?) `,
+    );
+    q.run(gateway_uuid, JSON.stringify({}));
+}
 
 s.on_block_data((gateway_uuid, block_uuid, value_name, val) => {
-    console.log("block data received");
+    console.log("received block data", block_uuid);
+    insert_gateway(gateway_uuid as UUID);
 
-    let q = db.query(`INSERT OR IGNORE INTO gateways(uuid, name, meta) VALUES (?, "", "{}") `)
-    let res = q.run(gateway_uuid)
+    let q = db.query(`SELECT * FROM blocks WHERE uuid = ?`);
+    let saved_block = q.get(block_uuid) as {
+        uuid: string;
+        parent: string;
+        value: any;
+        meta: string;
+    } | null;
 
-    q = db.query(`SELECT * FROM blocks WHERE uuid = ?`)
-    let res2 = q.get(block_uuid);
+    if (saved_block === null) {
+        let q = db.query(
+            `INSERT INTO blocks(uuid, parent, meta) VALUES (?, ?, ?)`,
+        );
+        q.run(block_uuid, gateway_uuid, JSON.stringify({}));
 
-    console.log(res2)
-
-    if (res2 === null) {
-
-        let q = db.query(`INSERT INTO blocks(uuid, parent, value, meta) VALUES (?, ?, ?, ?)`)
-
-        let block_value = null
-        let block_meta = {}
-
-        if (value_name === "value") {
-            block_value = val
-        } else {
-            block_meta[value_name] = val
-        }
-
-        q.run(block_uuid, gateway_uuid, block_value, JSON.stringify(block_meta))
-
-        console.log("Created new block")
-    } else {
-        if (value_name === "value") {
-            // update the value field
-            let q = db.query(`
+        saved_block = {
+            meta: JSON.stringify({}),
+            value: null,
+            parent: gateway_uuid,
+            uuid: block_uuid,
+        };
+    }
+    console.log("saved block", saved_block);
+    if (value_name === "value") {
+        // update the value field
+        let q = db.query(`
                 UPDATE blocks
                 SET value = ?
                 WHERE uuid = ?
-            `)
+            `);
 
-            q.run(JSON.stringify(val), block_uuid)
-        } else {
-            let q1 = db.query(`
-                SELECT meta FROM blocks WHERE uuid = ?`
-            )
+        q.run(JSON.stringify(val), block_uuid);
+    } else {
+        let prev_meta: { [key: string]: any } = {};
 
-            let res = q1.get(block_uuid)
+        prev_meta[value_name] = val;
 
-            if (res === null || res === undefined) { throw "" }
-            console.log("RES", res)
-            let prev_meta = {}
-            prev_meta[value_name] = val
-            for (let [k, v] of Object.entries(JSON.parse(res["meta"]))) {
-                if (k === value_name) continue;
-                prev_meta[k] = v
-            }
-            console.log("prev_meta", prev_meta)
-            console.log(value_name, val)
-            console.log("ES")
-
-            console.log("new", prev_meta)
-            let q2 = db.query(`UPDATE blocks 
-                SET meta = ?
-                WHERE uuid = ?`)
-
-            q2.run(JSON.stringify(prev_meta), block_uuid)
+        for (let [k, v] of Object.entries(JSON.parse(saved_block.meta))) {
+            if (k === value_name) continue;
+            prev_meta[k] = v;
         }
+
+        let q2 = db.query(`UPDATE blocks 
+                SET meta = ?
+                WHERE uuid = ?`);
+
+        q2.run(JSON.stringify(prev_meta), block_uuid);
     }
-})
+});
 
-// s.on_gateway_data((gateway_uuid, name, val) => {
-//     (async () => {
-//         let gw = await Gateway.findOne({ uuid: gateway_uuid }).exec()
-//         if (gw === null) {
-//             // Gateway does not exist yet in database
-//             gw = await new Gateway({ blocks: [], metadata: {}, uuid: gateway_uuid }).save()
-//         }
+s.on_gateway_data((gateway_uuid, name, val) => {
+    let q = db.query(
+        `INSERT OR IGNORE INTO gateways(uuid, name, meta) VALUES (?, "", "{}") `,
+    );
+    let res = q.run(gateway_uuid);
 
-//         gw["metadata"][name] = val
-//         await gw.save()
-//     })()
-// })
+    let q2 = db.query("SELECT meta FROM gateways WHERE uuid=?");
+    let res2 = q2.get(gateway_uuid) as { [key: string]: any };
+
+    let cloned_meta: { [key: string]: any } = {};
+
+    for (let [k, v] of Object.entries(res2)) {
+        cloned_meta[k] = v;
+    }
+
+    cloned_meta[name] = val;
+
+    let q3 = db.query("UPATE gateways SET meta = ? WHERE uuid = ?");
+    q3.run(cloned_meta, gateway_uuid);
+});
+
+if (enable_aedes) {
+    const aedes = await Aedes.createBroker({});
+    const tcp_server = net.createServer(aedes.handle);
+    const httpServer = http.createServer();
+
+    const wss = new WebSocketServer({
+        server: httpServer,
+    });
+
+    wss.on("connection", (websocket, req) => {
+        const stream = createWebSocketStream(websocket);
+        aedes.handle(stream, req);
+    });
+
+    httpServer.listen(1888, function () {
+        console.log("websocket server listening on port ", 1888);
+    });
+
+    tcp_server.listen(1886, () => {
+        console.log(`[MQTT] Listening on port ${1886}`);
+    });
+}

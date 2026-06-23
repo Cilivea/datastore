@@ -10,8 +10,8 @@
     "typescript": "^5"
   },
   "dependencies": {
-    "cil-db": "https://github.com/Cilivea/cil-db",
-    "cilivea-value": "https://github.com/Cilivea/cilivea-value",
+    "@cilivea/cil-db": "workspace:*",
+    "@cilivea/cilivea-value": "workspace:*",
     "mongoose": "^8.19.2"
   }
 }
