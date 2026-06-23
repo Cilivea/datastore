@@ -2,6 +2,8 @@ import { Server } from "cil-db";
 import { Database } from "bun:sqlite";
 import type { UUID } from "cilivea-value";
 
+console.log("Updated testing");
+
 const enable_aedes = false;
 
 import { WebSocketServer, createWebSocketStream } from "ws";
